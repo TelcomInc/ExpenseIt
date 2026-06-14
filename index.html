@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="TelCom Expense">
+  <title>TelCom Expense</title>
+
+  <script src="https://unpkg.com/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
+
+  <script>
+    const CONFIG = {
+      CLIENT_ID:       'b7411720-51b1-4463-ad0f-e5f0ac809b6b',
+      TENANT_ID:       'f6e7aba5-2c0d-4350-b448-d74c20f56f9c',
+      RECEIPTS_EMAIL:  'receipts@telcomsc.com',
+      DOCAI_KEY:       '3KpBO4woycgg54dP5NMhlgubcf61HzXOLAml9vELSS7iDYwfhwDVJQQJ99CFACYeBjFXJ3w3AAALACOGe19U',
+      DOCAI_ENDPOINT:  'https://telcom-docai.cognitiveservices.azure.com'
+    };
+  </script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --navy:   #1A3170;
+      --teal:   #007A9E;
+      --green:  #16a34a;
+      --red:    #dc2626;
+      --amber:  #d97706;
+      --bg:     #f1f5f9;
+      --card:   #ffffff;
+      --border: #e2e8f0;
+      --text:   #0f172a;
+      --muted:  #64748b;
+      --light:  #f8fafc;
+    }
+    html, body { height: 100%; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg); color: var(--text);
+      -webkit-font-smoothing: antialiased;
+    }
+    .screen { display: none; }
+    .screen.active { display: block; }
+
+    /* ── Login ── */
+    .center-wrap {
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; padding: 24px 16px;
+      background: linear-gradient(160deg, #0d1f45 0%, #1A3170 50%, #007A9E 100%);
+    }
+    .center-card {
+      background: var(--card); border-radius: 20px;
+      padding: 40px 28px; width: 100%; max-width: 400px;
+      box-shadow: 0 8px 30px rgba(0,0,0,.25); text-align: center;
+    }
+    .login-logo { width: 130px; height: auto; margin: 0 auto 18px; display: block; }
+    .center-card h1 { font-size: 22px; font-weight: 800; margin-bottom: 6px; color: var(--navy); }
+    .center-card p  { font-size: 14px; color: var(--muted); margin-bottom: 28px; line-height: 1.5; }
+    .center-card input {
+      width: 100%; padding: 14px; margin-bottom: 16px;
+      border: 2px solid var(--border); border-radius: 10px;
+      font-size: 28px; text-align: center; letter-spacing: 8px;
+      -webkit-appearance: none;
+    }
+    .center-card input:focus { outline: none; border-color: var(--teal); }
+    .btn-ms {
+      display: flex; align-items: center; justify-content: center; gap: 12px;
+      width: 100%; padding: 15px; border: 2px solid var(--border);
+      border-radius: 12px; font-size: 16px; font-weight: 600;
+      cursor: pointer; background: white; color: var(--text);
+    }
+    .btn-ms:active { background: #f1f5f9; }
+    .ms-logo { width: 20px; height: 20px; flex-shrink: 0; }
+
+    /* ── Header ── */
+    .header {
+      background: var(--navy); color: #fff;
+      padding: 14px 18px;
+      display: flex; align-items: center; justify-content: space-between;
+      position: sticky; top: 0; z-index: 10;
+    }
+    .header-left { display: flex; align-items: center; gap: 10px; }
+    .header-logo { height: 36px; width: auto; }
+    .header-title { font-size: 19px; font-weight: 700; }
+    .header-sub   { font-size: 12px; opacity: .8; margin-top: 2px; }
+    .header-btn {
+      background: rgba(255,255,255,.18); border: none; color: #fff;
+      font-size: 13px; font-weight: 600; padding: 7px 14px;
+      border-radius: 20px; cursor: pointer;
+    }
+
+    /* ── Page ── */
+    .page { max-width: 480px; margin: 0 auto; padding: 18px 14px 60px; }
+
+    /* ── Info card ── */
+    .info-card {
+      background: var(--card); border-radius: 14px; padding: 14px 16px;
+      margin-bottom: 14px; box-shadow: 0 1px 6px rgba(0,0,0,.07);
+      display: flex;
+    }
+    .info-item { flex: 1; }
+    .info-item + .info-item { border-left: 1px solid var(--border); padding-left: 16px; margin-left: 4px; }
+    .info-label { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; margin-bottom: 2px; }
+    .info-value { font-size: 15px; font-weight: 600; }
+
+    /* ── Receipt cards ── */
+    .receipt-card {
+      background: var(--card); border-radius: 14px;
+      border: 2px solid var(--border);
+      margin-bottom: 12px; overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,.06);
+      transition: border-color .2s;
+    }
+    .receipt-card.ready { border-color: var(--green); }
+    .receipt-card.error { border-color: var(--amber); }
+    .rc-header {
+      background: #f8fafc; padding: 10px 14px;
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+    }
+    .rc-num    { font-size: 13px; font-weight: 700; color: var(--teal); }
+    .rc-status { font-size: 12px; }
+    .rc-status.loading { color: var(--muted); }
+    .rc-status.ready   { color: var(--green); font-weight: 600; }
+    .rc-status.error   { color: var(--amber); font-weight: 600; }
+    .rc-remove { background: none; border: none; color: var(--red); font-size: 22px; cursor: pointer; line-height: 1; padding: 0 2px; }
+    .rc-body { display: flex; gap: 12px; padding: 12px; align-items: flex-start; }
+    .rc-photo {
+      flex: 0 0 90px; height: 110px; border-radius: 8px; overflow: hidden;
+      background: var(--light); cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      border: 1px solid var(--border);
+    }
+    .rc-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .rc-loading {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 16px 8px; gap: 10px; color: var(--muted); font-size: 13px;
+    }
+    .mini-spinner {
+      width: 28px; height: 28px;
+      border: 3px solid var(--border); border-top-color: var(--teal);
+      border-radius: 50%; animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .rc-fields { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+    .rc-field label { display: block; font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 2px; }
+    .rc-field input {
+      width: 100%; padding: 8px 10px;
+      border: 1.5px solid var(--border); border-radius: 8px;
+      font-size: 14px; background: var(--card); color: var(--text);
+      -webkit-appearance: none;
+    }
+    .rc-field input:focus { outline: none; border-color: var(--teal); }
+    .rc-field input.empty { border-color: var(--amber); background: #fffbeb; }
+
+    /* ── Add button ── */
+    .add-btn {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 6px;
+      width: 100%; padding: 24px 16px;
+      background: var(--card); border: 2.5px dashed var(--border);
+      border-radius: 14px; cursor: pointer; color: var(--teal);
+      margin-bottom: 12px; transition: background .15s;
+    }
+    .add-btn:active { background: #e2e8f0; }
+    .add-btn .icon { font-size: 36px; }
+    .add-btn .lbl  { font-size: 15px; font-weight: 700; }
+    .add-btn .sub  { font-size: 12px; color: var(--muted); }
+
+    /* ── Buttons ── */
+    .btn {
+      display: block; width: 100%; padding: 16px;
+      border: none; border-radius: 12px;
+      font-size: 17px; font-weight: 700;
+      cursor: pointer; transition: transform .1s; text-align: center;
+    }
+    .btn:active   { transform: scale(.98); }
+    .btn:disabled { opacity: .4; pointer-events: none; }
+    .btn-send  { background: var(--teal); color: #fff; }
+    .btn-navy  { background: var(--navy); color: #fff; }
+    .btn-ghost { background: transparent; color: var(--muted); font-size: 14px; padding: 12px; margin-top: 8px; }
+
+    /* ── Section label ── */
+    .section-label { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .7px; margin-bottom: 10px; }
+    .empty-hint { text-align: center; color: var(--muted); font-size: 13px; margin-bottom: 12px; }
+
+    /* ── Overlays ── */
+    .overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.6); z-index: 100;
+      align-items: center; justify-content: center; padding: 24px;
+    }
+    .overlay.show { display: flex; }
+    .overlay-box {
+      background: var(--card); border-radius: 20px;
+      padding: 36px 24px; text-align: center; max-width: 320px; width: 100%;
+    }
+    .overlay-box .big { font-size: 52px; margin-bottom: 12px; }
+    .overlay-box h2   { font-size: 20px; font-weight: 800; margin-bottom: 8px; }
+    .overlay-box p    { font-size: 14px; color: var(--muted); margin-bottom: 22px; line-height: 1.5; }
+    .lg-spinner {
+      width: 44px; height: 44px;
+      border: 4px solid var(--border); border-top-color: var(--teal);
+      border-radius: 50%; animation: spin .8s linear infinite; margin: 0 auto 16px;
+    }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed; bottom: 28px; left: 50%;
+      transform: translateX(-50%) translateY(10px);
+      background: #1e293b; color: #fff;
+      padding: 11px 22px; border-radius: 100px;
+      font-size: 14px; font-weight: 500;
+      opacity: 0; transition: opacity .25s, transform .25s;
+      z-index: 999; white-space: nowrap; pointer-events: none;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════ LOGIN ══════════════ -->
+<div id="loginScreen" class="screen">
+  <div class="center-wrap">
+    <div class="center-card">
+      <img src="https://telcominc.github.io/ExpenseIt/logo.png" alt="TelCom" class="login-logo" onerror="this.style.display='none'">
+      <h1>TelCom Expense</h1>
+      <p>Sign in with your TelCom Microsoft account to submit expense receipts.</p>
+      <button class="btn-ms" onclick="loginWithMicrosoft()">
+        <svg class="ms-logo" viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg">
+          <rect x="1"  y="1"  width="9" height="9" fill="#f25022"/>
+          <rect x="11" y="1"  width="9" height="9" fill="#7fba00"/>
+          <rect x="1"  y="11" width="9" height="9" fill="#00a4ef"/>
+          <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
+        </svg>
+        Sign in with Microsoft
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ CARD FALLBACK ══════════════ -->
+<div id="cardScreen" class="screen">
+  <div class="center-wrap">
+    <div class="center-card">
+      <img src="https://telcominc.github.io/ExpenseIt/logo.png" alt="TelCom" class="login-logo" onerror="this.style.display='none'">
+      <h1>Card Not Found</h1>
+      <p>Your card info isn't set in the system yet. Enter your last 4 digits and let your manager know to add it to your profile.</p>
+      <input type="text" id="cardInput" placeholder="1234" maxlength="4" inputmode="numeric" pattern="\d{4}">
+      <button class="btn btn-send" onclick="saveCard()">Continue →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ MAIN ══════════════ -->
+<div id="mainScreen" class="screen">
+  <div class="header">
+    <div class="header-left">
+      <img src="logo.png" alt="TelCom" class="header-logo" onerror="this.style.display='none'">
+      <div>
+        <div class="header-title">TelCom Expense</div>
+        <div class="header-sub" id="headerSub"></div>
+      </div>
+    </div>
+    <button class="header-btn" onclick="signOut()">Sign Out</button>
+  </div>
+
+  <div class="page">
+    <div class="info-card">
+      <div class="info-item">
+        <div class="info-label">Employee</div>
+        <div class="info-value" id="dispName"></div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">Last 4</div>
+        <div class="info-value" id="dispCard"></div>
+      </div>
+    </div>
+
+    <div class="section-label" id="sectionLabel">Receipts</div>
+    <div id="emptyHint" class="empty-hint">No receipts added yet.</div>
+    <div id="receiptList"></div>
+
+    <button class="add-btn" onclick="triggerPhoto()">
+      <span class="icon">📷</span>
+      <span class="lbl">Snap or Choose Receipt</span>
+      <span class="sub">Camera or camera roll — AI reads it automatically</span>
+    </button>
+    <input type="file" id="fileInput" accept="image/*" capture="environment" onchange="handlePhoto(event)" style="display:none;">
+
+    <button class="btn btn-send" id="sendBtn" onclick="submitAll()" disabled>📤 Send Receipts</button>
+    <button class="btn btn-ghost" onclick="clearAll()">↺ Clear All</button>
+  </div>
+</div>
+
+<!-- ══════════════ OVERLAYS ══════════════ -->
+<div class="overlay" id="sendingOverlay">
+  <div class="overlay-box">
+    <div class="lg-spinner"></div>
+    <h2>Sending…</h2>
+    <p>Attaching your receipts and sending the expense report.</p>
+  </div>
+</div>
+
+<div class="overlay" id="successOverlay">
+  <div class="overlay-box">
+    <div class="big">✅</div>
+    <h2>Submitted!</h2>
+    <p id="successMsg"></p>
+    <button class="btn btn-send" onclick="closeSuccess()" style="margin-bottom:10px;">📷 Submit More</button>
+    <button class="btn btn-navy" onclick="doneDone()">✅ Done</button>
+  </div>
+</div>
+
+<div class="overlay" id="errorOverlay">
+  <div class="overlay-box">
+    <div class="big">⚠️</div>
+    <h2>Send Failed</h2>
+    <p id="errorMsg">Something went wrong. Please try again.</p>
+    <button class="btn btn-send" onclick="hideOverlay('errorOverlay')">Try Again</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- ══════════════ SCRIPT ══════════════ -->
+<script>
+  const msalInstance = new msal.PublicClientApplication({
+    auth: {
+      clientId:    CONFIG.CLIENT_ID,
+      authority:   `https://login.microsoftonline.com/${CONFIG.TENANT_ID}`,
+      redirectUri: window.location.origin + window.location.pathname
+    },
+    cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: false }
+  });
+
+  const SCOPES   = ['User.Read', 'Mail.Send'];
+  const CARD_KEY = 'expenseit_card_v1';
+
+  let _user     = null;
+  let _card     = null;
+  let _receipts = [];
+  let _idCtr    = 0;
+
+  async function init() {
+    try {
+      const resp = await msalInstance.handleRedirectPromise();
+      if (resp) msalInstance.setActiveAccount(resp.account);
+      const account = msalInstance.getAllAccounts()[0];
+      if (!account) { show('loginScreen'); return; }
+      msalInstance.setActiveAccount(account);
+      await loadUser();
+    } catch(e) { console.error(e); show('loginScreen'); }
+  }
+
+  async function loadUser() {
+    const token = await getToken();
+    const me = await fetch(
+      'https://graph.microsoft.com/v1.0/me?$select=displayName,givenName,surname,mail,userPrincipalName,employeeId',
+      { headers: { Authorization: `Bearer ${token}` } }
+    ).then(r => r.json());
+
+    _user = {
+      name:  me.displayName || `${me.givenName||''} ${me.surname||''}`.trim(),
+      email: me.mail || me.userPrincipalName
+    };
+    _card = me.employeeId || localStorage.getItem(CARD_KEY) || null;
+    if (!_card) { show('cardScreen'); return; }
+    showMain();
+  }
+
+  function loginWithMicrosoft() { msalInstance.loginRedirect({ scopes: SCOPES }); }
+
+  async function getToken() {
+    const account = msalInstance.getActiveAccount();
+    try {
+      return (await msalInstance.acquireTokenSilent({ scopes: SCOPES, account })).accessToken;
+    } catch {
+      await msalInstance.acquireTokenRedirect({ scopes: SCOPES, account });
+    }
+  }
+
+  function signOut() { localStorage.removeItem(CARD_KEY); msalInstance.logoutRedirect(); }
+
+  function saveCard() {
+    const val = document.getElementById('cardInput').value.trim();
+    if (!/^\d{4}$/.test(val)) { toast('Must be exactly 4 digits'); return; }
+    localStorage.setItem(CARD_KEY, val);
+    _card = val;
+    showMain();
+  }
+
+  function showMain() {
+    document.getElementById('dispName').textContent  = _user.name;
+    document.getElementById('dispCard').textContent  = `****${_card}`;
+    document.getElementById('headerSub').textContent = _user.email;
+    show('mainScreen');
+  }
+
+  /* ── Photo ── */
+  function triggerPhoto() { document.getElementById('fileInput').click(); }
+
+  function handlePhoto(e) {
+    const file = e.target.files[0]; if (!file) return;
+    document.getElementById('fileInput').value = '';
+    const reader = new FileReader();
+    reader.onload = async ev => {
+      const compressed = await compressImage(ev.target.result);
+      const id = ++_idCtr;
+      _receipts.push({ id, dataUrl: compressed, status: 'loading', vendor: '', date: '', total: '' });
+      renderList();
+      readReceiptWithDocAI(id, compressed);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  /* ── Azure Document Intelligence OCR ── */
+  async function readReceiptWithDocAI(id, dataUrl) {
+    try {
+      const base64 = dataUrl.split(',')[1];
+
+      // Submit analysis job
+      const submitRes = await fetch(
+        `${CONFIG.DOCAI_ENDPOINT}/documentintelligence/documentModels/prebuilt-receipt:analyze?api-version=2024-11-30`,
+        {
+          method: 'POST',
+          headers: {
+            'Ocp-Apim-Subscription-Key': CONFIG.DOCAI_KEY,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ base64Source: base64 })
+        }
+      );
+
+      if (!submitRes.ok && submitRes.status !== 202) throw new Error(`Submit failed: ${submitRes.status}`);
+
+      const pollUrl = submitRes.headers.get('Operation-Location');
+      if (!pollUrl) throw new Error('No poll URL returned');
+
+      // Poll until complete
+      let result = null;
+      for (let i = 0; i < 20; i++) {
+        await new Promise(r => setTimeout(r, 2000));
+        const pollRes = await fetch(pollUrl, {
+          headers: { 'Ocp-Apim-Subscription-Key': CONFIG.DOCAI_KEY }
+        });
+        const pollData = await pollRes.json();
+        if (pollData.status === 'succeeded') { result = pollData; break; }
+        if (pollData.status === 'failed')    throw new Error('Analysis failed');
+      }
+
+      if (!result) throw new Error('Timed out');
+
+      const fields = result.analyzeResult?.documents?.[0]?.fields || {};
+      const r = _receipts.find(r => r.id === id);
+      if (!r) return;
+
+      r.vendor = fields.MerchantName?.valueString || '';
+      r.date   = fields.TransactionDate?.valueDate || '';
+      r.total  = fields.Total?.valueCurrency?.amount != null
+                   ? String(fields.Total.valueCurrency.amount)
+                   : '';
+      r.status = 'ready';
+
+    } catch(err) {
+      console.error('DocAI error:', err);
+      const r = _receipts.find(r => r.id === id);
+      if (r) r.status = 'error';
+    }
+    renderList();
+  }
+
+  /* ── Render ── */
+  function renderList() {
+    const list  = document.getElementById('receiptList');
+    const hint  = document.getElementById('emptyHint');
+    const label = document.getElementById('sectionLabel');
+    const btn   = document.getElementById('sendBtn');
+
+    list.innerHTML = '';
+
+    if (_receipts.length === 0) {
+      hint.style.display = '';
+      label.textContent  = 'Receipts';
+      btn.disabled       = true;
+      btn.textContent    = '📤 Send Receipts';
+      return;
+    }
+
+    hint.style.display = 'none';
+    label.textContent  = `Receipts (${_receipts.length})`;
+
+    const anyLoading = _receipts.some(r => r.status === 'loading');
+    btn.disabled    = anyLoading;
+    btn.textContent = anyLoading
+      ? '⏳ Reading receipts…'
+      : _receipts.length === 1 ? '📤 Send Receipt' : `📤 Send ${_receipts.length} Receipts`;
+
+    _receipts.forEach((r, idx) => {
+      const num    = idx + 1;
+      const clsCrd = r.status === 'ready' ? 'receipt-card ready' : r.status === 'error' ? 'receipt-card error' : 'receipt-card';
+      const stsTxt = r.status === 'loading' ? '⏳ Reading receipt…' : r.status === 'ready' ? '✅ Receipt read' : '⚠️ Fill in manually';
+      const div = document.createElement('div');
+      div.className = clsCrd;
+      div.id = `rc-${r.id}`;
+      div.innerHTML = `
+        <div class="rc-header">
+          <span class="rc-num">Receipt ${num}</span>
+          <span class="rc-status ${r.status}">${stsTxt}</span>
+          <button class="rc-remove" onclick="removeReceipt(${r.id})">×</button>
+        </div>
+        <div class="rc-body">
+          <div class="rc-photo" onclick="changePhoto(${r.id})">
+            <img src="${r.dataUrl}" alt="Receipt ${num}">
+          </div>
+          ${r.status === 'loading'
+            ? `<div class="rc-loading"><div class="mini-spinner"></div>Reading with AI…</div>`
+            : `<div class="rc-fields">
+                <div class="rc-field">
+                  <label>Vendor / Store</label>
+                  <input type="text" id="v-${r.id}" value="${escHtml(r.vendor)}" placeholder="e.g. Walmart"
+                    class="${r.vendor ? '' : 'empty'}" oninput="updateField(${r.id},'vendor',this.value)">
+                </div>
+                <div class="rc-field">
+                  <label>Date</label>
+                  <input type="date" id="d-${r.id}" value="${r.date}"
+                    class="${r.date ? '' : 'empty'}" onchange="updateField(${r.id},'date',this.value)">
+                </div>
+                <div class="rc-field">
+                  <label>Total ($)</label>
+                  <input type="number" id="t-${r.id}" value="${r.total}" placeholder="0.00"
+                    step="0.01" min="0" inputmode="decimal"
+                    class="${r.total ? '' : 'empty'}" oninput="updateField(${r.id},'total',this.value)">
+                </div>
+              </div>`
+          }
+        </div>`;
+      list.appendChild(div);
+    });
+  }
+
+  function updateField(id, field, value) {
+    const r = _receipts.find(r => r.id === id);
+    if (r) r[field] = value;
+    const el = document.getElementById(field==='vendor'?`v-${id}`:field==='date'?`d-${id}`:`t-${id}`);
+    if (el) el.className = value ? '' : 'empty';
+  }
+
+  function removeReceipt(id) { _receipts = _receipts.filter(r => r.id !== id); renderList(); }
+
+  function changePhoto(id) {
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = 'image/*'; input.capture = 'environment';
+    input.onchange = async e => {
+      const file = e.target.files[0]; if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async ev => {
+        const compressed = await compressImage(ev.target.result);
+        const r = _receipts.find(r => r.id === id);
+        if (!r) return;
+        r.dataUrl = compressed; r.status = 'loading';
+        r.vendor = ''; r.date = ''; r.total = '';
+        renderList();
+        readReceiptWithDocAI(id, compressed);
+      };
+      reader.readAsDataURL(file);
+    };
+    input.click();
+  }
+
+  /* ── Submit ── */
+  async function submitAll() {
+    for (let i = 0; i < _receipts.length; i++) {
+      const r = _receipts[i]; const num = i + 1;
+      r.vendor = document.getElementById(`v-${r.id}`)?.value?.trim() || r.vendor;
+      r.date   = document.getElementById(`d-${r.id}`)?.value         || r.date;
+      r.total  = document.getElementById(`t-${r.id}`)?.value         || r.total;
+      if (!r.vendor) { toast(`Receipt ${num}: enter vendor`); return; }
+      if (!r.date)   { toast(`Receipt ${num}: enter date`);   return; }
+      if (!r.total || +r.total <= 0) { toast(`Receipt ${num}: enter total`); return; }
+    }
+
+    showOverlay('sendingOverlay');
+    try {
+      const token = await getToken();
+      const count = _receipts.length;
+      const subject = count === 1
+        ? `[EXPENSE] ${_user.name} | ${fmtDate(_receipts[0].date)} | $${(+_receipts[0].total).toFixed(2)}`
+        : `[EXPENSE] ${_user.name} | ${count} receipts | Total $${_receipts.reduce((s,r)=>s+(+r.total||0),0).toFixed(2)}`;
+
+      const blocks = _receipts.map((r,i) =>
+`--- Receipt ${i+1} of ${count} ---
+Employee  : ${_user.name}
+Card Last4: ${_card}
+Vendor    : ${r.vendor}
+Date      : ${fmtDate(r.date)}
+Total     : $${(+r.total).toFixed(2)}
+[DATA|${_user.name}|${_card}|${r.vendor}|${r.date}|${(+r.total).toFixed(2)}]`).join('\n\n');
+
+      const body = `EXPENSE RECEIPT SUBMISSION
+Employee: ${_user.name} | Card: ****${_card} | Receipts: ${count}
+===========================
+
+${blocks}
+
+===========================
+Submitted via ExpenseIt — receipt photos attached`;
+
+      const res = await fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: {
+            subject,
+            body: { contentType: 'Text', content: body },
+            toRecipients: [
+              { emailAddress: { address: CONFIG.RECEIPTS_EMAIL } },
+              { emailAddress: { address: _user.email } }
+            ],
+            attachments: _receipts.map((r,i) => ({
+              '@odata.type': '#microsoft.graph.fileAttachment',
+              name:          `Receipt_${i+1}.jpg`,
+              contentType:   'image/jpeg',
+              contentBytes:  r.dataUrl.split(',')[1]
+            }))
+          },
+          saveToSentItems: true
+        })
+      });
+
+      hideOverlay('sendingOverlay');
+      if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error?.message||`HTTP ${res.status}`); }
+      document.getElementById('successMsg').textContent =
+        `${count===1?'1 receipt':count+' receipts'} sent successfully. A copy was sent to your inbox.`;
+      showOverlay('successOverlay');
+    } catch(err) {
+      hideOverlay('sendingOverlay');
+      document.getElementById('errorMsg').textContent = err.message||'Send failed.';
+      showOverlay('errorOverlay');
+      console.error(err);
+    }
+  }
+
+  function closeSuccess() { hideOverlay('successOverlay'); clearAll(); }
+  function doneDone()     { hideOverlay('successOverlay'); clearAll(); signOut(); }
+  function clearAll()     { _receipts = []; renderList(); }
+
+  /* ── Utilities ── */
+  function compressImage(dataUrl, maxW=1400, quality=0.78) {
+    return new Promise(resolve => {
+      const img = new Image();
+      img.onload = () => {
+        let w=img.width, h=img.height;
+        if (w>maxW) { h=Math.round((maxW/w)*h); w=maxW; }
+        const c=document.createElement('canvas'); c.width=w; c.height=h;
+        c.getContext('2d').drawImage(img,0,0,w,h);
+        resolve(c.toDataURL('image/jpeg',quality));
+      };
+      img.src=dataUrl;
+    });
+  }
+
+  function fmtDate(iso) {
+    if (!iso) return '';
+    const [y,m,d] = iso.split('-'); return `${m}/${d}/${y}`;
+  }
+
+  function escHtml(s) {
+    return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+  }
+
+  function show(id) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+  }
+  function showOverlay(id) { document.getElementById(id).classList.add('show'); }
+  function hideOverlay(id) { document.getElementById(id).classList.remove('show'); }
+  function toast(msg, ms=3000) {
+    const el = document.getElementById('toast');
+    el.textContent=msg; el.classList.add('show');
+    clearTimeout(el._t); el._t=setTimeout(()=>el.classList.remove('show'),ms);
+  }
+
+  init();
+</script>
+</body>
+</html>
